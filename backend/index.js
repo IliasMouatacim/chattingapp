@@ -42,6 +42,11 @@ const createSystemMessage = (text) => ({
   timestamp: new Date().toISOString(),
 });
 
+const broadcastOnlineUsers = () => {
+  const users = Array.from(usersBySocket.entries()).map(([id, name]) => ({ id, name }));
+  io.emit('online_users', users);
+};
+
 io.on('connection', (socket) => {
   socket.emit('chat_message', createSystemMessage('Connected to server. Pick a name and join the chat.'));
 
@@ -49,6 +54,21 @@ io.on('connection', (socket) => {
     const name = String(rawName || '').trim().slice(0, 24) || 'Anonymous';
     usersBySocket.set(socket.id, name);
     io.emit('chat_message', createSystemMessage(`${name} joined the room.`));
+    broadcastOnlineUsers();
+  });
+
+  socket.on('typing', () => {
+    const user = usersBySocket.get(socket.id);
+    if (user) {
+      socket.broadcast.emit('user_typing', user);
+    }
+  });
+
+  socket.on('stop_typing', () => {
+    const user = usersBySocket.get(socket.id);
+    if (user) {
+      socket.broadcast.emit('user_stop_typing', user);
+    }
   });
 
   socket.on('send_message', (rawText) => {
@@ -71,6 +91,7 @@ io.on('connection', (socket) => {
     if (name) {
       io.emit('chat_message', createSystemMessage(`${name} left the room.`));
       usersBySocket.delete(socket.id);
+      broadcastOnlineUsers();
     }
   });
 });
