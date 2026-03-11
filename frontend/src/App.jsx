@@ -131,11 +131,11 @@ function App() {
     }
 
     const onIceCandidate = async (data) => {
-      if (!connectionRef.current) return
       if (!remoteDescSet.current) {
         iceCandidateQueue.current.push(data.candidate)
         return
       }
+      if (!connectionRef.current) return // Safety fallback
       try {
         await connectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
       } catch (e) {
