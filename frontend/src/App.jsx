@@ -75,6 +75,7 @@ function App() {
       // simple system messages during join, we map by active chat if room is missing.
       // Better: backend now includes room:code.
       const chatId = room || activeChatRef.current
+      const isMe = message.from === socket.id || message.user === name
       
       setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), message] }))
       
@@ -175,9 +176,15 @@ function App() {
   }, [messages, typingUsers, activeChat])
 
   useEffect(() => {
-    if (remoteVideo.current && remoteStream) {
-      remoteVideo.current.srcObject = remoteStream
+    if (!remoteVideo.current || !remoteStream) {
+      return
     }
+
+    remoteVideo.current.srcObject = remoteStream
+    remoteVideo.current.play().catch(() => {
+      // Browsers can block autoplay with sound until user interaction.
+      // The call accept/start button generally provides interaction, so ignore failures.
+    })
   }, [remoteStream, callAccepted])
 
   const joinRoom = (event) => {
@@ -257,6 +264,10 @@ function App() {
 
       peer.ontrack = (event) => {
         setRemoteStream(event.streams[0])
+        if (remoteVideo.current) {
+          remoteVideo.current.srcObject = event.streams[0]
+          remoteVideo.current.play().catch(() => {})
+        }
       }
 
       const offer = await peer.createOffer()
@@ -299,6 +310,10 @@ function App() {
 
       peer.ontrack = (event) => {
         setRemoteStream(event.streams[0])
+        if (remoteVideo.current) {
+          remoteVideo.current.srcObject = event.streams[0]
+          remoteVideo.current.play().catch(() => {})
+        }
       }
 
       await peer.setRemoteDescription(new RTCSessionDescription(callerSignal))
