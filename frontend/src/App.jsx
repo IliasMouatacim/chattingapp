@@ -220,7 +220,19 @@ function App() {
   const callUser = async (idToCall) => {
     try {
       setCallPartner(idToCall)
-      const currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const constraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      }
+      const currentStream = await navigator.mediaDevices.getUserMedia(constraints)
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
@@ -250,7 +262,19 @@ function App() {
   const answerCall = async () => {
     setCallAccepted(true)
     try {
-      const currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const constraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      }
+      const currentStream = await navigator.mediaDevices.getUserMedia(constraints)
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
