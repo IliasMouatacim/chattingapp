@@ -37,6 +37,8 @@ function App() {
   const localVideo = useRef(null)
   const remoteVideo = useRef(null)
   const connectionRef = useRef(null)
+  const iceCandidateQueue = useRef([])
+  const remoteDescSet = useRef(false)
 
   useEffect(() => {
     activeChatRef.current = activeChat
@@ -116,16 +118,28 @@ function App() {
       setCallAccepted(true)
       if (connectionRef.current) {
         await connectionRef.current.setRemoteDescription(new RTCSessionDescription(signal))
+        remoteDescSet.current = true
+        for (const candidate of iceCandidateQueue.current) {
+          try {
+            await connectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+          } catch (e) {
+            console.error('Error adding queued ice candidate', e)
+          }
+        }
+        iceCandidateQueue.current = []
       }
     }
 
     const onIceCandidate = async (data) => {
-      if (connectionRef.current) {
-        try {
-          await connectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-        } catch (e) {
-          console.error("Error adding received ice candidate", e)
-        }
+      if (!connectionRef.current) return
+      if (!remoteDescSet.current) {
+        iceCandidateQueue.current.push(data.candidate)
+        return
+      }
+      try {
+        await connectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+      } catch (e) {
+        console.error('Error adding received ice candidate', e)
       }
     }
 
@@ -135,12 +149,17 @@ function App() {
         connectionRef.current.close()
       }
       connectionRef.current = null
+      remoteDescSet.current = false
+      iceCandidateQueue.current = []
       setReceivingCall(false)
       setCallAccepted(false)
       setCaller(null)
       setCallPartner(null)
       setRemoteStream(null)
-      // We will let React manage stopping the stream tracks in leaveCall
+      setStream(prev => {
+        if (prev) prev.getTracks().forEach(t => t.stop())
+        return null
+      })
     }
 
     socket.on('chat_message', onMessage)
@@ -234,6 +253,9 @@ function App() {
 
   const callUser = async (idToCall) => {
     try {
+      setCallEnded(false)
+      remoteDescSet.current = false
+      iceCandidateQueue.current = []
       setCallPartner(idToCall)
       const constraints = {
         video: {
@@ -280,6 +302,9 @@ function App() {
 
   const answerCall = async () => {
     setCallAccepted(true)
+    setCallEnded(false)
+    remoteDescSet.current = false
+    iceCandidateQueue.current = []
     try {
       const constraints = {
         video: {
@@ -317,6 +342,15 @@ function App() {
       }
 
       await peer.setRemoteDescription(new RTCSessionDescription(callerSignal))
+      remoteDescSet.current = true
+      for (const candidate of iceCandidateQueue.current) {
+        try {
+          await peer.addIceCandidate(new RTCIceCandidate(candidate))
+        } catch (e) {
+          console.error('Error adding queued ice candidate', e)
+        }
+      }
+      iceCandidateQueue.current = []
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
 
@@ -335,6 +369,8 @@ function App() {
        socket.emit('end_call', { to: callPartner })
     }
     connectionRef.current = null
+    remoteDescSet.current = false
+    iceCandidateQueue.current = []
     setReceivingCall(false)
     setCallAccepted(false)
     setCaller(null)
@@ -574,9 +610,8 @@ function App() {
         <div className="active-call-overlay fade-in">
           <div className="video-container">
             <div className="remote-video-wrapper">
-              {callAccepted && !callEnded ? (
-                <video playsInline ref={remoteVideo} autoPlay className="remote-video" />
-              ) : (
+              <video playsInline ref={remoteVideo} autoPlay className="remote-video" style={{ display: callAccepted && !callEnded ? 'block' : 'none' }} />
+              {!(callAccepted && !callEnded) && (
                 <div className="calling-placeholder">
                   <div className="dots">
                     <span></span><span></span><span></span>
