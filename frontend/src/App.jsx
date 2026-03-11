@@ -19,10 +19,23 @@ function App() {
   const [joinedRooms, setJoinedRooms] = useState([])
   const [typingUsers, setTypingUsers] = useState(new Set())
   
+  // WebRTC state
+  const [stream, setStream] = useState(null)
+  const [receivingCall, setReceivingCall] = useState(false)
+  const [caller, setCaller] = useState(null)
+  const [callerName, setCallerName] = useState('')
+  const [callerSignal, setCallerSignal] = useState(null)
+  const [callAccepted, setCallAccepted] = useState(false)
+  const [callEnded, setCallEnded] = useState(false)
+  const [callPartner, setCallPartner] = useState(null)
+  
   const listRef = useRef(null)
   const typingTimeoutRef = useRef(null)
   const isTypingRef = useRef(false)
   const activeChatRef = useRef('global')
+  const localVideo = useRef(null)
+  const remoteVideo = useRef(null)
+  const connectionRef = useRef(null)
 
   useEffect(() => {
     activeChatRef.current = activeChat
@@ -64,7 +77,7 @@ function App() {
       
       setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), message] }))
       
-      if (activeChatRef.current !== chatId) {
+      if (activeChatRef.current !== chatId && !isMe) {
         setUnread((prev) => ({ ...prev, [chatId]: (prev[chatId] || 0) + 1 }))
       }
     }
@@ -89,12 +102,54 @@ function App() {
       })
     }
 
+    const onCallUser = (data) => {
+      setReceivingCall(true)
+      setCaller(data.from)
+      setCallerName(data.name)
+      setCallerSignal(data.signal)
+      setCallPartner(data.from)
+    }
+
+    const onCallAccepted = async (signal) => {
+      setCallAccepted(true)
+      if (connectionRef.current) {
+        await connectionRef.current.setRemoteDescription(new RTCSessionDescription(signal))
+      }
+    }
+
+    const onIceCandidate = async (data) => {
+      if (connectionRef.current) {
+        try {
+          await connectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+        } catch (e) {
+          console.error("Error adding received ice candidate", e)
+        }
+      }
+    }
+
+    const onEndCall = () => {
+      setCallEnded(true)
+      if (connectionRef.current) {
+        connectionRef.current.close()
+      }
+      connectionRef.current = null
+      setReceivingCall(false)
+      setCallAccepted(false)
+      setCaller(null)
+      setCallPartner(null)
+      // We will let React manage stopping the stream tracks in leaveCall
+    }
+
     socket.on('chat_message', onMessage)
     socket.on('private_message', onPrivateMessage)
     socket.on('room_message', onRoomMessage)
     socket.on('online_users', onOnlineUsers)
     socket.on('user_typing', onUserTyping)
     socket.on('user_stop_typing', onUserStopTyping)
+    socket.on('call_user', onCallUser)
+    socket.on('call_accepted', onCallAccepted)
+    socket.on('ice_candidate', onIceCandidate)
+    socket.on('end_call', onEndCall)
 
     return () => {
       socket.off('chat_message', onMessage)
@@ -103,6 +158,10 @@ function App() {
       socket.off('online_users', onOnlineUsers)
       socket.off('user_typing', onUserTyping)
       socket.off('user_stop_typing', onUserStopTyping)
+      socket.off('call_user', onCallUser)
+      socket.off('call_accepted', onCallAccepted)
+      socket.off('ice_candidate', onIceCandidate)
+      socket.off('end_call', onEndCall)
       socket.disconnect()
     }
   }, [socket])
@@ -156,6 +215,87 @@ function App() {
       socket.emit('stop_typing')
       isTypingRef.current = false
     }, 1500)
+  }
+
+  const callUser = async (idToCall) => {
+    try {
+      setCallPartner(idToCall)
+      const currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      setStream(currentStream)
+      if (localVideo.current) localVideo.current.srcObject = currentStream
+
+      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      connectionRef.current = peer
+
+      currentStream.getTracks().forEach(track => peer.addTrack(track, currentStream))
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice_candidate', { to: idToCall, candidate: event.candidate })
+        }
+      }
+
+      peer.ontrack = (event) => {
+        if (remoteVideo.current) remoteVideo.current.srcObject = event.streams[0]
+      }
+
+      const offer = await peer.createOffer()
+      await peer.setLocalDescription(offer)
+      socket.emit('call_user', { userToCall: idToCall, signalData: offer, from: socket.id, name })
+    } catch (err) {
+      console.error("Failed to get local stream", err)
+    }
+  }
+
+  const answerCall = async () => {
+    setCallAccepted(true)
+    try {
+      const currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      setStream(currentStream)
+      if (localVideo.current) localVideo.current.srcObject = currentStream
+
+      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      connectionRef.current = peer
+
+      currentStream.getTracks().forEach(track => peer.addTrack(track, currentStream))
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice_candidate', { to: caller, candidate: event.candidate })
+        }
+      }
+
+      peer.ontrack = (event) => {
+        if (remoteVideo.current) remoteVideo.current.srcObject = event.streams[0]
+      }
+
+      await peer.setRemoteDescription(new RTCSessionDescription(callerSignal))
+      const answer = await peer.createAnswer()
+      await peer.setLocalDescription(answer)
+
+      socket.emit('answer_call', { signal: answer, to: caller })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const leaveCall = () => {
+    setCallEnded(true)
+    if (connectionRef.current) {
+      connectionRef.current.close()
+    }
+    if (callPartner) {
+       socket.emit('end_call', { to: callPartner })
+    }
+    connectionRef.current = null
+    setReceivingCall(false)
+    setCallAccepted(false)
+    setCaller(null)
+    setCallPartner(null)
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      setStream(null)
+    }
   }
 
   const sendMessage = (event) => {
@@ -291,6 +431,20 @@ function App() {
             </h2>
             <p>Connected as <strong>{name}</strong></p>
           </div>
+          {activeChat !== 'global' && !activeChat.startsWith('room_') && (
+            <div className="header-actions">
+              <button 
+                className="action-btn call-btn" 
+                onClick={() => callUser(activeChat)}
+                title="Start Video Call"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="messages-area">
@@ -346,6 +500,60 @@ function App() {
           </button>
         </form>
       </section>
+
+      {/* Incoming Call Modal */}
+      {receivingCall && !callAccepted && (
+        <div className="call-modal-overlay fade-in">
+          <div className="call-modal scale-in">
+            <div className="call-modal-icon pulse-circle">
+              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+              </svg>
+            </div>
+            <h3>Incoming Video Call</h3>
+            <p><strong>{callerName}</strong> is calling you...</p>
+            <div className="call-actions">
+              <button className="accept-btn" onClick={answerCall}>Accept</button>
+              <button className="decline-btn" onClick={leaveCall}>Decline</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Call UI */}
+      {(stream || callAccepted) && (
+        <div className="active-call-overlay fade-in">
+          <div className="video-container">
+            <div className="remote-video-wrapper">
+              {callAccepted && !callEnded ? (
+                <video playsInline ref={remoteVideo} autoPlay className="remote-video" />
+              ) : (
+                <div className="calling-placeholder">
+                  <div className="dots">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <p>{receivingCall ? "Connecting..." : "Calling..."}</p>
+                </div>
+              )}
+            </div>
+            {stream && (
+              <div className="local-video-wrapper">
+                <video playsInline muted ref={localVideo} autoPlay className="local-video" />
+              </div>
+            )}
+            <div className="call-controls">
+              <button className="hangup-btn" onClick={leaveCall}>
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path>
+                  <line x1="23" y1="1" x2="1" y2="23"></line>
+                </svg>
+                Hang Up
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

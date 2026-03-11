@@ -134,6 +134,23 @@ io.on('connection', (socket) => {
     io.to(code).emit('room_message', message);
   });
 
+  // WebRTC Signaling Events
+  socket.on('call_user', ({ userToCall, signalData, from, name }) => {
+    io.to(userToCall).emit('call_user', { signal: signalData, from, name });
+  });
+
+  socket.on('answer_call', ({ to, signal }) => {
+    io.to(to).emit('call_accepted', signal);
+  });
+
+  socket.on('ice_candidate', ({ to, candidate }) => {
+    io.to(to).emit('ice_candidate', { candidate, from: socket.id });
+  });
+
+  socket.on('end_call', ({ to }) => {
+    io.to(to).emit('end_call');
+  });
+
   socket.on('disconnect', () => {
     const name = usersBySocket.get(socket.id);
     if (name) {
