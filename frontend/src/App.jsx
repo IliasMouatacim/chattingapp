@@ -8,22 +8,65 @@ function App() {
   
   const [name, setName] = useState('')
   const [joined, setJoined] = useState(false)
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState({ global: [] })
+  const [activeChat, setActiveChat] = useState('global')
+  const [unread, setUnread] = useState({})
   const [draft, setDraft] = useState('')
+  const [roomCodeInput, setRoomCodeInput] = useState('')
   
   // New state
   const [onlineUsers, setOnlineUsers] = useState([])
+  const [joinedRooms, setJoinedRooms] = useState([])
   const [typingUsers, setTypingUsers] = useState(new Set())
   
   const listRef = useRef(null)
   const typingTimeoutRef = useRef(null)
   const isTypingRef = useRef(false)
+  const activeChatRef = useRef('global')
+
+  useEffect(() => {
+    activeChatRef.current = activeChat
+    if (unread[activeChat]) {
+      setUnread(prev => ({ ...prev, [activeChat]: 0 }))
+    }
+  }, [activeChat, unread])
 
   useEffect(() => {
     socket.connect()
 
     const onMessage = (message) => {
-      setMessages((prev) => [...prev, message])
+      setMessages((prev) => ({ ...prev, global: [...(prev.global || []), message] }))
+      if (activeChatRef.current !== 'global') {
+        setUnread((prev) => ({ ...prev, global: (prev.global || 0) + 1 }))
+      }
+    }
+
+    const onPrivateMessage = (message) => {
+      const isMe = message.from === socket.id
+      const chatId = isMe ? message.to : message.from
+      
+      setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), message] }))
+      
+      if (activeChatRef.current !== chatId && !isMe) {
+        setUnread((prev) => ({ ...prev, [chatId]: (prev[chatId] || 0) + 1 }))
+      }
+    }
+
+    const onRoomMessage = (message) => {
+      const room = message.room ? `room_${message.room}` : null
+      if (!room && message.user === 'system') return // Safety fallback
+
+      // The backend createSystemMessage doesn't include a room param by default, 
+      // but when it broadcasts room_message, it's sent to the room code. To handle 
+      // simple system messages during join, we map by active chat if room is missing.
+      // Better: backend now includes room:code.
+      const chatId = room || activeChatRef.current
+      
+      setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), message] }))
+      
+      if (activeChatRef.current !== chatId) {
+        setUnread((prev) => ({ ...prev, [chatId]: (prev[chatId] || 0) + 1 }))
+      }
     }
     
     const onOnlineUsers = (users) => {
@@ -47,12 +90,16 @@ function App() {
     }
 
     socket.on('chat_message', onMessage)
+    socket.on('private_message', onPrivateMessage)
+    socket.on('room_message', onRoomMessage)
     socket.on('online_users', onOnlineUsers)
     socket.on('user_typing', onUserTyping)
     socket.on('user_stop_typing', onUserStopTyping)
 
     return () => {
       socket.off('chat_message', onMessage)
+      socket.off('private_message', onPrivateMessage)
+      socket.off('room_message', onRoomMessage)
       socket.off('online_users', onOnlineUsers)
       socket.off('user_typing', onUserTyping)
       socket.off('user_stop_typing', onUserStopTyping)
@@ -64,7 +111,7 @@ function App() {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
-  }, [messages, typingUsers])
+  }, [messages, typingUsers, activeChat])
 
   const joinRoom = (event) => {
     event.preventDefault()
@@ -75,6 +122,20 @@ function App() {
     socket.emit('join_room', cleanName)
     setName(cleanName)
     setJoined(true)
+  }
+
+  const joinPrivateRoom = (e) => {
+    e.preventDefault()
+    const code = roomCodeInput.trim()
+    if (!code) return
+    
+    if (!joinedRooms.includes(code)) {
+      socket.emit('join_private_room', code)
+      setJoinedRooms(prev => [...prev, code])
+    }
+    
+    setActiveChat(`room_${code}`)
+    setRoomCodeInput('')
   }
 
   const handleDraftChange = (e) => {
@@ -112,7 +173,14 @@ function App() {
       isTypingRef.current = false
     }
 
-    socket.emit('send_message', message)
+    if (activeChat === 'global') {
+      socket.emit('send_message', message)
+    } else if (activeChat.startsWith('room_')) {
+      const roomCode = activeChat.replace('room_', '')
+      socket.emit('send_room_message', { room: roomCode, text: message })
+    } else {
+      socket.emit('send_private_message', { to: activeChat, text: message })
+    }
     setDraft('')
   }
 
@@ -158,11 +226,54 @@ function App() {
           <span className="online-badge">{onlineUsers.length} Online</span>
         </div>
         <div className="user-list">
+          <div 
+            className={`user-item ${activeChat === 'global' ? 'active' : ''}`}
+            onClick={() => setActiveChat('global')}
+            style={{ cursor: 'pointer' }}
+          >
+            <span className="status-dot global"></span>
+            Global Room
+            {unread.global > 0 && <span className="unread-badge">{unread.global}</span>}
+          </div>
+          <div className="sidebar-spacer" style={{ margin: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}></div>
+          
+          <form className="join-room-form" onSubmit={joinPrivateRoom}>
+            <input 
+              type="text" 
+              placeholder="Enter room code" 
+              value={roomCodeInput}
+              onChange={(e) => setRoomCodeInput(e.target.value)}
+              className="room-input"
+            />
+            <button type="submit" className="room-btn">+</button>
+          </form>
+
+          {joinedRooms.map(room => (
+            <div 
+              key={room} 
+              className={`user-item room-item ${activeChat === `room_${room}` ? 'active' : ''}`}
+              onClick={() => setActiveChat(`room_${room}`)}
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="room-hash">#</span>
+              {room}
+              {unread[`room_${room}`] > 0 && <span className="unread-badge">{unread[`room_${room}`]}</span>}
+            </div>
+          ))}
+
+          <div className="sidebar-spacer" style={{ margin: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}></div>
+          
           {onlineUsers.map(u => (
-            <div key={u.id} className="user-item">
+            <div 
+              key={u.id} 
+              className={`user-item ${activeChat === u.id ? 'active' : ''} ${u.id === socket.id ? 'disabled' : ''}`}
+              onClick={() => { if (u.id !== socket.id) setActiveChat(u.id) }}
+              style={{ cursor: u.id === socket.id ? 'default' : 'pointer' }}
+            >
               <span className="status-dot online"></span>
               {u.name}
-              {u.name === name && <span className="you-tag">(You)</span>}
+              {u.id === socket.id && <span className="you-tag">(You)</span>}
+              {unread[u.id] > 0 && <span className="unread-badge">{unread[u.id]}</span>}
             </div>
           ))}
         </div>
@@ -171,14 +282,20 @@ function App() {
       <section className="chat-container">
         <header className="chat-header">
           <div className="header-info">
-            <h2>Global Room</h2>
+            <h2>
+              {activeChat === 'global' 
+                ? 'Global Room' 
+                : activeChat.startsWith('room_') 
+                  ? `Room: #${activeChat.replace('room_', '')}`
+                  : `Chat with ${onlineUsers.find(u => u.id === activeChat)?.name || 'User'}`}
+            </h2>
             <p>Connected as <strong>{name}</strong></p>
           </div>
         </header>
 
         <div className="messages-area">
           <div className="messages-scroll" ref={listRef}>
-            {messages.map((msg) => {
+            {(messages[activeChat] || []).map((msg) => {
               const isSystem = msg.user === 'system';
               const isMine = msg.user === name && !isSystem;
 

@@ -86,6 +86,54 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('send_private_message', ({ to, text }) => {
+    const cleanText = String(text || '').trim().slice(0, 500);
+    if (!cleanText || !to) return;
+
+    const user = usersBySocket.get(socket.id) || 'Anonymous';
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      user,
+      text: cleanText,
+      timestamp: new Date().toISOString(),
+      from: socket.id,
+      to,
+    };
+
+    io.to(to).emit('private_message', message);
+    if (to !== socket.id) {
+      socket.emit('private_message', message);
+    }
+  });
+
+  socket.on('join_private_room', (roomCode) => {
+    const code = String(roomCode || '').trim().slice(0, 24);
+    if (!code) return;
+
+    socket.join(code);
+    const user = usersBySocket.get(socket.id) || 'Anonymous';
+    
+    // Broadcast to the room that someone joined
+    io.to(code).emit('room_message', createSystemMessage(`${user} joined the room.`));
+  });
+
+  socket.on('send_room_message', ({ room, text }) => {
+    const cleanText = String(text || '').trim().slice(0, 500);
+    const code = String(room || '').trim().slice(0, 24);
+    if (!cleanText || !code) return;
+
+    const user = usersBySocket.get(socket.id) || 'Anonymous';
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      user,
+      text: cleanText,
+      timestamp: new Date().toISOString(),
+      room: code,
+    };
+
+    io.to(code).emit('room_message', message);
+  });
+
   socket.on('disconnect', () => {
     const name = usersBySocket.get(socket.id);
     if (name) {

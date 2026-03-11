@@ -183,6 +183,63 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.user-item.active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.user-item.disabled {
+  opacity: 0.5;
+}
+
+.join-room-form {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.room-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--surface-border);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.room-input:focus {
+  border-color: var(--primary);
+}
+
+.room-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.room-btn:hover {
+  background: var(--primary);
+}
+
+.room-hash {
+  color: var(--primary);
+  font-weight: 800;
+  margin-right: -0.25rem;
+  opacity: 0.8;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -191,10 +248,28 @@
   box-shadow: 0 0 8px rgba(46, 213, 115, 0.6);
 }
 
+.status-dot.global {
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
 .you-tag {
   color: var(--text-muted);
   font-size: 0.8rem;
   margin-left: auto;
+}
+
+.unread-badge {
+  background: var(--primary);
+  color: white;
+  border-radius: 12px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-left: auto;
+  min-width: 20px;
+  text-align: center;
+  box-shadow: 0 0 8px var(--primary-glow);
 }
 
 /* Chat Main Area */
