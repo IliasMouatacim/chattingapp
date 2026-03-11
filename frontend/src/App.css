@@ -636,14 +636,15 @@
   position: absolute;
   top: 1.5rem;
   right: 1.5rem;
-  width: 200px;
+  width: 250px;
+  max-width: 30vw;
   aspect-ratio: 16/9;
   background: #111;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  z-index: 10;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  z-index: 20;
 }
 
 .local-video {
@@ -660,7 +661,7 @@
   transform: translateX(-50%);
   display: flex;
   gap: 1rem;
-  z-index: 10;
+  z-index: 20;
 }
 
 .hangup-btn {
