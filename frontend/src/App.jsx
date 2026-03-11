@@ -195,16 +195,24 @@ function App() {
   }, [messages, typingUsers, activeChat])
 
   useEffect(() => {
-    if (!remoteVideo.current || !remoteStream) {
-      return
+    if (remoteVideo.current && remoteStream) {
+      remoteVideo.current.srcObject = remoteStream
+      remoteVideo.current.play().catch(() => {
+        // Browsers can block autoplay with sound until user interaction.
+        // The call accept/start button generally provides interaction, so ignore failures.
+      })
     }
-
-    remoteVideo.current.srcObject = remoteStream
-    remoteVideo.current.play().catch(() => {
-      // Browsers can block autoplay with sound until user interaction.
-      // The call accept/start button generally provides interaction, so ignore failures.
-    })
   }, [remoteStream, callAccepted])
+
+  useEffect(() => {
+    if (localVideo.current && stream) {
+      localVideo.current.srcObject = stream
+      localVideo.current.play().catch(() => {
+        // Browsers can block autoplay with sound until user interaction.
+        // The call accept/start button generally provides interaction, so ignore failures.
+      })
+    }
+  }, [stream])
 
   const joinRoom = (event) => {
     event.preventDefault()
