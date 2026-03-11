@@ -21,6 +21,7 @@ function App() {
   
   // WebRTC state
   const [stream, setStream] = useState(null)
+  const [remoteStream, setRemoteStream] = useState(null)
   const [receivingCall, setReceivingCall] = useState(false)
   const [caller, setCaller] = useState(null)
   const [callerName, setCallerName] = useState('')
@@ -137,6 +138,7 @@ function App() {
       setCallAccepted(false)
       setCaller(null)
       setCallPartner(null)
+      setRemoteStream(null)
       // We will let React manage stopping the stream tracks in leaveCall
     }
 
@@ -171,6 +173,12 @@ function App() {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [messages, typingUsers, activeChat])
+
+  useEffect(() => {
+    if (remoteVideo.current && remoteStream) {
+      remoteVideo.current.srcObject = remoteStream
+    }
+  }, [remoteStream, callAccepted])
 
   const joinRoom = (event) => {
     event.preventDefault()
@@ -248,7 +256,7 @@ function App() {
       }
 
       peer.ontrack = (event) => {
-        if (remoteVideo.current) remoteVideo.current.srcObject = event.streams[0]
+        setRemoteStream(event.streams[0])
       }
 
       const offer = await peer.createOffer()
@@ -290,7 +298,7 @@ function App() {
       }
 
       peer.ontrack = (event) => {
-        if (remoteVideo.current) remoteVideo.current.srcObject = event.streams[0]
+        setRemoteStream(event.streams[0])
       }
 
       await peer.setRemoteDescription(new RTCSessionDescription(callerSignal))
@@ -316,6 +324,7 @@ function App() {
     setCallAccepted(false)
     setCaller(null)
     setCallPartner(null)
+    setRemoteStream(null)
     if (stream) {
       stream.getTracks().forEach(track => track.stop())
       setStream(null)
