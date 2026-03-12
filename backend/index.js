@@ -18,6 +18,7 @@ app.use(express.json());
 
 app.get('/', (_req, res) => {
   res.json({ message: 'Chat backend is running.' });
+
 });
 
 app.get('/health', (_req, res) => {
@@ -34,6 +35,7 @@ const io = new Server(server, {
 });
 
 const usersBySocket = new Map();
+const roomsBySocket = new Map();
 
 const createSystemMessage = (text) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -42,33 +44,29 @@ const createSystemMessage = (text) => ({
   timestamp: new Date().toISOString(),
 });
 
-const broadcastOnlineUsers = () => {
-  const users = Array.from(usersBySocket.entries()).map(([id, name]) => ({ id, name }));
+const sanitizeRoomCode = (value) =>
+  String(value || '')
+    .trim()
+    .slice(0, 32)
+    .replace(/[^a-zA-Z0-9_-]/g, '');
+
+const emitOnlineUsers = () => {
+  const users = Array.from(io.sockets.sockets.values()).map((client) => ({
+    id: client.id,
+    name: usersBySocket.get(client.id) || 'Anonymous',
+  }));
   io.emit('online_users', users);
 };
 
 io.on('connection', (socket) => {
   socket.emit('chat_message', createSystemMessage('Connected to server. Pick a name and join the chat.'));
+  emitOnlineUsers();
 
   socket.on('join_room', (rawName) => {
     const name = String(rawName || '').trim().slice(0, 24) || 'Anonymous';
     usersBySocket.set(socket.id, name);
     io.emit('chat_message', createSystemMessage(`${name} joined the room.`));
-    broadcastOnlineUsers();
-  });
-
-  socket.on('typing', () => {
-    const user = usersBySocket.get(socket.id);
-    if (user) {
-      socket.broadcast.emit('user_typing', user);
-    }
-  });
-
-  socket.on('stop_typing', () => {
-    const user = usersBySocket.get(socket.id);
-    if (user) {
-      socket.broadcast.emit('user_stop_typing', user);
-    }
+    emitOnlineUsers();
   });
 
   socket.on('send_message', (rawText) => {
@@ -86,78 +84,139 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('send_private_message', ({ to, text }) => {
-    const cleanText = String(text || '').trim().slice(0, 500);
-    if (!cleanText || !to) return;
+  socket.on('join_private_room', (rawRoomCode) => {
+    const roomCode = sanitizeRoomCode(rawRoomCode);
+    if (!roomCode) {
+      return;
+    }
+
+    const roomName = `room:${roomCode}`;
+    socket.join(roomName);
+
+    const currentRooms = roomsBySocket.get(socket.id) || new Set();
+    currentRooms.add(roomCode);
+    roomsBySocket.set(socket.id, currentRooms);
+
+    const user = usersBySocket.get(socket.id) || 'Anonymous';
+    io.to(roomName).emit('room_message', {
+      ...createSystemMessage(`${user} joined room #${roomCode}.`),
+      room: roomCode,
+    });
+  });
+
+  socket.on('send_room_message', (payload) => {
+    const roomCode = sanitizeRoomCode(payload && payload.room);
+    const text = String(payload && payload.text ? payload.text : '').trim().slice(0, 500);
+    if (!roomCode || !text) {
+      return;
+    }
+
+    const userRooms = roomsBySocket.get(socket.id);
+    if (!userRooms || !userRooms.has(roomCode)) {
+      return;
+    }
+
+    const roomName = `room:${roomCode}`;
+    const user = usersBySocket.get(socket.id) || 'Anonymous';
+    io.to(roomName).emit('room_message', {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      user,
+      text,
+      room: roomCode,
+      from: socket.id,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  socket.on('send_private_message', (payload) => {
+    const to = String(payload && payload.to ? payload.to : '').trim();
+    const text = String(payload && payload.text ? payload.text : '').trim().slice(0, 500);
+    if (!to || !text) {
+      return;
+    }
 
     const user = usersBySocket.get(socket.id) || 'Anonymous';
     const message = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       user,
-      text: cleanText,
-      timestamp: new Date().toISOString(),
+      text,
       from: socket.id,
       to,
+      timestamp: new Date().toISOString(),
     };
 
     io.to(to).emit('private_message', message);
-    if (to !== socket.id) {
-      socket.emit('private_message', message);
+    socket.emit('private_message', message);
+  });
+
+  socket.on('typing', () => {
+    const user = usersBySocket.get(socket.id);
+    if (!user) {
+      return;
     }
+    socket.broadcast.emit('user_typing', user);
   });
 
-  socket.on('join_private_room', (roomCode) => {
-    const code = String(roomCode || '').trim().slice(0, 24);
-    if (!code) return;
-
-    socket.join(code);
-    const user = usersBySocket.get(socket.id) || 'Anonymous';
-    
-    // Broadcast to the room that someone joined
-    io.to(code).emit('room_message', createSystemMessage(`${user} joined the room.`));
+  socket.on('stop_typing', () => {
+    const user = usersBySocket.get(socket.id);
+    if (!user) {
+      return;
+    }
+    socket.broadcast.emit('user_stop_typing', user);
   });
 
-  socket.on('send_room_message', ({ room, text }) => {
-    const cleanText = String(text || '').trim().slice(0, 500);
-    const code = String(room || '').trim().slice(0, 24);
-    if (!cleanText || !code) return;
+  socket.on('call_user', (payload) => {
+    const userToCall = String(payload && payload.userToCall ? payload.userToCall : '').trim();
+    if (!userToCall || !payload || !payload.signalData) {
+      return;
+    }
 
-    const user = usersBySocket.get(socket.id) || 'Anonymous';
-    const message = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      user,
-      text: cleanText,
-      timestamp: new Date().toISOString(),
-      room: code,
-    };
-
-    io.to(code).emit('room_message', message);
+    io.to(userToCall).emit('call_user', {
+      signal: payload.signalData,
+      from: socket.id,
+      name: usersBySocket.get(socket.id) || payload.name || 'Anonymous',
+    });
   });
 
-  // WebRTC Signaling Events
-  socket.on('call_user', ({ userToCall, signalData, from, name }) => {
-    io.to(userToCall).emit('call_user', { signal: signalData, from, name });
+  socket.on('answer_call', (payload) => {
+    const to = String(payload && payload.to ? payload.to : '').trim();
+    if (!to || !payload || !payload.signal) {
+      return;
+    }
+
+    io.to(to).emit('call_accepted', payload.signal);
   });
 
-  socket.on('answer_call', ({ to, signal }) => {
-    io.to(to).emit('call_accepted', signal);
+  socket.on('ice_candidate', (payload) => {
+    const to = String(payload && payload.to ? payload.to : '').trim();
+    if (!to || !payload || !payload.candidate) {
+      return;
+    }
+
+    io.to(to).emit('ice_candidate', {
+      candidate: payload.candidate,
+      from: socket.id,
+    });
   });
 
-  socket.on('ice_candidate', ({ to, candidate }) => {
-    io.to(to).emit('ice_candidate', { candidate, from: socket.id });
-  });
+  socket.on('end_call', (payload) => {
+    const to = String(payload && payload.to ? payload.to : '').trim();
+    if (!to) {
+      return;
+    }
 
-  socket.on('end_call', ({ to }) => {
     io.to(to).emit('end_call');
   });
 
   socket.on('disconnect', () => {
     const name = usersBySocket.get(socket.id);
     if (name) {
+      socket.broadcast.emit('user_stop_typing', name);
       io.emit('chat_message', createSystemMessage(`${name} left the room.`));
       usersBySocket.delete(socket.id);
-      broadcastOnlineUsers();
     }
+    roomsBySocket.delete(socket.id);
+    emitOnlineUsers();
   });
 });
 

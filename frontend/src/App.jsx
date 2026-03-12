@@ -112,6 +112,7 @@ function App() {
       setCallerName(data.name)
       setCallerSignal(data.signal)
       setCallPartner(data.from)
+      iceCandidateQueue.current = [] // Clear any stale candidates
     }
 
     const onCallAccepted = async (signal) => {
@@ -281,7 +282,16 @@ function App() {
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      const configuration = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+        ]
+      }
+      const peer = new RTCPeerConnection(configuration)
       connectionRef.current = peer
 
       currentStream.getTracks().forEach(track => peer.addTrack(track, currentStream))
@@ -312,7 +322,6 @@ function App() {
     setCallAccepted(true)
     setCallEnded(false)
     remoteDescSet.current = false
-    iceCandidateQueue.current = []
     try {
       const constraints = {
         video: {
@@ -330,7 +339,16 @@ function App() {
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      const configuration = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+        ]
+      }
+      const peer = new RTCPeerConnection(configuration)
       connectionRef.current = peer
 
       currentStream.getTracks().forEach(track => peer.addTrack(track, currentStream))
