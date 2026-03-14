@@ -108,10 +108,12 @@ function App() {
 
     const onCallUser = (data) => {
       setReceivingCall(true)
+      setCallEnded(false)
       setCaller(data.from)
       setCallerName(data.name)
       setCallerSignal(data.signal)
       setCallPartner(data.from)
+      remoteDescSet.current = false
       iceCandidateQueue.current = [] // Clear any stale candidates
     }
 
@@ -132,11 +134,11 @@ function App() {
     }
 
     const onIceCandidate = async (data) => {
-      if (!remoteDescSet.current) {
+      if (!connectionRef.current || !remoteDescSet.current) {
         iceCandidateQueue.current.push(data.candidate)
         return
       }
-      if (!connectionRef.current) return // Safety fallback
+
       try {
         await connectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate))
       } catch (e) {
