@@ -63,9 +63,14 @@ Backend default URL: `http://localhost:4000`
 2. Set project root directory to `frontend`.
 3. Add environment variable:
    - `VITE_API_URL=https://your-backend.onrender.com`
+   - For reliable video/audio calls across different networks, also set TURN values:
+     - `VITE_TURN_URL=turn:your-turn-server:3478`
+     - `VITE_TURN_USERNAME=your-username`
+     - `VITE_TURN_CREDENTIAL=your-password`
 4. Deploy.
 
 ## Notes
 
 - The chat is realtime but in-memory only (no database/history persistence).
 - If your backend is sleeping on free Render tier, first message may be delayed while waking up.
+- WebRTC calls need a TURN server for many mobile/corporate/NAT-restricted networks; STUN-only can fail to exchange media.

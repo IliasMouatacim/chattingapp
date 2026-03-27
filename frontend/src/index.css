@@ -3,12 +3,12 @@
   --bg-gradient: linear-gradient(135deg, #131426 0%, #1a1b36 50%, #251e3e 100%);
   --surface: rgba(30, 32, 54, 0.6);
   --surface-border: rgba(255, 255, 255, 0.08);
-  --primary: #8a63f8;
-  --primary-hover: #9d7dfa;
-  --primary-glow: rgba(138, 99, 248, 0.4);
+  --primary: #e53935;
+  --primary-hover: #ef5350;
+  --primary-glow: rgba(229, 57, 53, 0.4);
   --text-main: #f5f6fa;
   --text-muted: #a0a4b8;
-  --bubble-mine: #8a63f8;
+  --bubble-mine: #e53935;
   --bubble-theirs: rgba(45, 48, 77, 0.8);
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }

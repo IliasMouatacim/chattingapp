@@ -2,9 +2,47 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import './App.css'
 
+const defaultIceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' }
+]
+
+const buildIceServers = () => {
+  const { VITE_ICE_SERVERS, VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL } = import.meta.env
+
+  if (VITE_ICE_SERVERS) {
+    try {
+      const parsed = JSON.parse(VITE_ICE_SERVERS)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+      }
+      console.warn('VITE_ICE_SERVERS must be a non-empty JSON array. Falling back to defaults.')
+    } catch (error) {
+      console.warn('Failed to parse VITE_ICE_SERVERS JSON. Falling back to defaults.', error)
+    }
+  }
+
+  if (VITE_TURN_URL) {
+    return [
+      ...defaultIceServers,
+      {
+        urls: VITE_TURN_URL,
+        username: VITE_TURN_USERNAME || '',
+        credential: VITE_TURN_CREDENTIAL || ''
+      }
+    ]
+  }
+
+  return defaultIceServers
+}
+
 function App() {
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000'
   const socket = useMemo(() => io(apiUrl, { autoConnect: false }), [apiUrl])
+  const iceServers = useMemo(() => buildIceServers(), [])
   
   const [name, setName] = useState('')
   const [joined, setJoined] = useState(false)
@@ -284,15 +322,7 @@ function App() {
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
-      const configuration = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' },
-        ]
-      }
+      const configuration = { iceServers }
       const peer = new RTCPeerConnection(configuration)
       connectionRef.current = peer
 
@@ -341,15 +371,7 @@ function App() {
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
-      const configuration = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' },
-        ]
-      }
+      const configuration = { iceServers }
       const peer = new RTCPeerConnection(configuration)
       connectionRef.current = peer
 
