@@ -496,20 +496,33 @@ function App() {
     <main className="app-layout fade-in">
       <aside className="sidebar slide-in-left">
         <div className="sidebar-header">
-          <h2>Orbit</h2>
+          <div className="sidebar-brand">
+            <h2>Orbit</h2>
+            <p>Command Deck</p>
+          </div>
           <span className="online-badge">{onlineUsers.length} Online</span>
         </div>
         <div className="user-list">
-          <div 
-            className={`user-item ${activeChat === 'global' ? 'active' : ''}`}
+          <div className="menu-section-header">Spaces</div>
+
+          <div
+            className={`user-item menu-cta ${activeChat === 'global' ? 'active' : ''}`}
             onClick={() => setActiveChat('global')}
-            style={{ cursor: 'pointer' }}
           >
-            <span className="status-dot global"></span>
-            Global Room
+            <span className="item-icon global-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M2 12h20"></path>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </span>
+            <span className="item-label">Global Room</span>
             {unread.global > 0 && <span className="unread-badge">{unread.global}</span>}
           </div>
-          <div className="sidebar-spacer" style={{ margin: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}></div>
+
+          <div className="sidebar-spacer"></div>
+
+          <div className="menu-section-header">Private Rooms</div>
           
           <form className="join-room-form" onSubmit={joinPrivateRoom}>
             <input 
@@ -519,7 +532,12 @@ function App() {
               onChange={(e) => setRoomCodeInput(e.target.value)}
               className="room-input"
             />
-            <button type="submit" className="room-btn">+</button>
+            <button type="submit" className="room-btn" aria-label="Join private room">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
           </form>
 
           {joinedRooms.map(room => (
@@ -527,25 +545,26 @@ function App() {
               key={room} 
               className={`user-item room-item ${activeChat === `room_${room}` ? 'active' : ''}`}
               onClick={() => setActiveChat(`room_${room}`)}
-              style={{ cursor: 'pointer' }}
             >
-              <span className="room-hash">#</span>
-              {room}
+              <span className="item-icon room-icon" aria-hidden="true">#</span>
+              <span className="item-label">{room}</span>
               {unread[`room_${room}`] > 0 && <span className="unread-badge">{unread[`room_${room}`]}</span>}
             </div>
           ))}
 
-          <div className="sidebar-spacer" style={{ margin: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}></div>
+          <div className="sidebar-spacer"></div>
+
+          <div className="menu-section-header">People Online</div>
           
           {onlineUsers.map(u => (
             <div 
               key={u.id} 
               className={`user-item ${activeChat === u.id ? 'active' : ''} ${u.id === socket.id ? 'disabled' : ''}`}
               onClick={() => { if (u.id !== socket.id) setActiveChat(u.id) }}
-              style={{ cursor: u.id === socket.id ? 'default' : 'pointer' }}
             >
+              <span className="avatar-pill" aria-hidden="true">{u.name.slice(0, 1).toUpperCase()}</span>
+              <span className="item-label">{u.name}</span>
               <span className="status-dot online"></span>
-              {u.name}
               {u.id === socket.id && <span className="you-tag">(You)</span>}
               {unread[u.id] > 0 && <span className="unread-badge">{unread[u.id]}</span>}
             </div>
