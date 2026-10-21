@@ -60,7 +60,7 @@ const emitOnlineUsers = () => {
 };
 
 io.on('connection', (socket) => {
-  socket.emit('chat_message', createSystemMessage('Connected to server. Pick a name and join the chat.'));
+  socket.emit('chat_message', createSystemMessage('Welcome to Orbit. Make yourself at home.'));
   emitOnlineUsers();
 
   socket.on('join_room', (rawName) => {

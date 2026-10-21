@@ -91,3 +91,19 @@ and checks health, presence, sender identity, global/direct/room messages, room
 membership enforcement, directed-target isolation, and call signaling. It closes
 the server and clients after completion. Browser media tests still require camera
 and microphone access (or simulated devices); cross-network calls may need TURN.
+
+### Browser checks
+
+The browser suite covers desktop and mobile navigation, room sharing, drafts,
+multiline messages, connection recovery, simulated video calls, and automated
+WCAG accessibility checks. It starts and stops its own frontend and backend.
+
+```bash
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+To use an existing Chromium installation, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
+to its executable path when running the suite. Tests use simulated camera and
+microphone devices; no actual camera or microphone is recorded.
