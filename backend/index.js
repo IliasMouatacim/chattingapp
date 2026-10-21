@@ -40,6 +40,7 @@ const roomsBySocket = new Map();
 const createSystemMessage = (text) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
   user: 'system',
+  system: true,
   text,
   timestamp: new Date().toISOString(),
 });
@@ -80,6 +81,7 @@ io.on('connection', (socket) => {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       user,
       text,
+      from: socket.id,
       timestamp: new Date().toISOString(),
     });
   });
@@ -131,7 +133,7 @@ io.on('connection', (socket) => {
   socket.on('send_private_message', (payload) => {
     const to = String(payload && payload.to ? payload.to : '').trim();
     const text = String(payload && payload.text ? payload.text : '').trim().slice(0, 500);
-    if (!to || !text) {
+    if (!to || !text || !io.sockets.sockets.has(to)) {
       return;
     }
 
@@ -146,7 +148,7 @@ io.on('connection', (socket) => {
     };
 
     io.to(to).emit('private_message', message);
-    socket.emit('private_message', message);
+    if (to !== socket.id) socket.emit('private_message', message);
   });
 
   socket.on('typing', () => {
@@ -167,7 +169,7 @@ io.on('connection', (socket) => {
 
   socket.on('call_user', (payload) => {
     const userToCall = String(payload && payload.userToCall ? payload.userToCall : '').trim();
-    if (!userToCall || !payload || !payload.signalData) {
+    if (!io.sockets.sockets.has(userToCall) || !payload || !payload.signalData) {
       return;
     }
 
@@ -180,7 +182,7 @@ io.on('connection', (socket) => {
 
   socket.on('answer_call', (payload) => {
     const to = String(payload && payload.to ? payload.to : '').trim();
-    if (!to || !payload || !payload.signal) {
+    if (!io.sockets.sockets.has(to) || !payload || !payload.signal) {
       return;
     }
 
@@ -189,7 +191,7 @@ io.on('connection', (socket) => {
 
   socket.on('ice_candidate', (payload) => {
     const to = String(payload && payload.to ? payload.to : '').trim();
-    if (!to || !payload || !payload.candidate) {
+    if (!io.sockets.sockets.has(to) || !payload || !payload.candidate) {
       return;
     }
 
@@ -201,7 +203,7 @@ io.on('connection', (socket) => {
 
   socket.on('end_call', (payload) => {
     const to = String(payload && payload.to ? payload.to : '').trim();
-    if (!to) {
+    if (!io.sockets.sockets.has(to)) {
       return;
     }
 
@@ -220,7 +222,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const port = Number(process.env.PORT) || 4000;
+const port = process.env.PORT === undefined ? 4000 : Number(process.env.PORT);
 server.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+  console.log(`Server listening on http://localhost:${server.address().port}`);
 });

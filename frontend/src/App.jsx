@@ -67,6 +67,7 @@ function App() {
   const [callAccepted, setCallAccepted] = useState(false)
   const [callEnded, setCallEnded] = useState(false)
   const [callPartner, setCallPartner] = useState(null)
+  const [callError, setCallError] = useState('')
   
   const listRef = useRef(null)
   const typingTimeoutRef = useRef(null)
@@ -78,14 +79,24 @@ function App() {
   const iceCandidateQueue = useRef([])
   const remoteDescSet = useRef(false)
 
-  useEffect(() => {
-    activeChatRef.current = activeChat
-    if (unread[activeChat]) {
-      setUnread(prev => ({ ...prev, [activeChat]: 0 }))
-    }
-  }, [activeChat, unread])
+  const [ownSocketIds, setOwnSocketIds] = useState(() => new Set())
+  const identityRef = useRef(null)
+  const roomsRef = useRef([])
+  const streamRef = useRef(null)
+
+  const selectChat = (chat) => {
+    activeChatRef.current = chat
+    setActiveChat(chat)
+    setUnread(prev => ({ ...prev, [chat]: 0 }))
+  }
 
   useEffect(() => {
+    const onConnect = () => {
+      setOwnSocketIds(previous => new Set([...previous, socket.id]))
+      if (identityRef.current) socket.emit('join_room', identityRef.current)
+      roomsRef.current.forEach(room => socket.emit('join_private_room', room))
+    }
+    socket.on('connect', onConnect)
     socket.connect()
 
     const onMessage = (message) => {
@@ -108,14 +119,10 @@ function App() {
 
     const onRoomMessage = (message) => {
       const room = message.room ? `room_${message.room}` : null
-      if (!room && message.user === 'system') return // Safety fallback
+      if (!room && message.system) return // Safety fallback
 
-      // The backend createSystemMessage doesn't include a room param by default, 
-      // but when it broadcasts room_message, it's sent to the room code. To handle 
-      // simple system messages during join, we map by active chat if room is missing.
-      // Better: backend now includes room:code.
       const chatId = room || activeChatRef.current
-      const isMe = message.from === socket.id || message.user === name
+      const isMe = message.from === socket.id
       
       setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), message] }))
       
@@ -215,6 +222,10 @@ function App() {
     socket.on('end_call', onEndCall)
 
     return () => {
+      socket.off('connect', onConnect)
+      clearTimeout(typingTimeoutRef.current)
+      connectionRef.current?.close()
+      streamRef.current?.getTracks().forEach(track => track.stop())
       socket.off('chat_message', onMessage)
       socket.off('private_message', onPrivateMessage)
       socket.off('room_message', onRoomMessage)
@@ -261,6 +272,7 @@ function App() {
     if (!cleanName) {
       return
     }
+    identityRef.current = cleanName
     socket.emit('join_room', cleanName)
     setName(cleanName)
     setJoined(true)
@@ -268,15 +280,16 @@ function App() {
 
   const joinPrivateRoom = (e) => {
     e.preventDefault()
-    const code = roomCodeInput.trim()
+    const code = roomCodeInput.trim().slice(0, 32).replace(/[^a-zA-Z0-9_-]/g, '')
     if (!code) return
     
     if (!joinedRooms.includes(code)) {
       socket.emit('join_private_room', code)
-      setJoinedRooms(prev => [...prev, code])
+      roomsRef.current = [...roomsRef.current, code]
+      setJoinedRooms(roomsRef.current)
     }
     
-    setActiveChat(`room_${code}`)
+    selectChat(`room_${code}`)
     setRoomCodeInput('')
   }
 
@@ -302,6 +315,7 @@ function App() {
 
   const callUser = async (idToCall) => {
     try {
+      setCallError('')
       setCallEnded(false)
       remoteDescSet.current = false
       iceCandidateQueue.current = []
@@ -319,6 +333,7 @@ function App() {
         }
       }
       const currentStream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = currentStream
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
@@ -346,11 +361,14 @@ function App() {
       await peer.setLocalDescription(offer)
       socket.emit('call_user', { userToCall: idToCall, signalData: offer, from: socket.id, name })
     } catch (err) {
-      console.error("Failed to get local stream", err)
+      leaveCall()
+      setCallError('Could not start the call. Check camera and microphone permissions.')
+      console.error('Call failed', err)
     }
   }
 
   const answerCall = async () => {
+    setCallError('')
     setCallAccepted(true)
     setCallEnded(false)
     remoteDescSet.current = false
@@ -368,6 +386,7 @@ function App() {
         }
       }
       const currentStream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = currentStream
       setStream(currentStream)
       if (localVideo.current) localVideo.current.srcObject = currentStream
 
@@ -406,6 +425,8 @@ function App() {
 
       socket.emit('answer_call', { signal: answer, to: caller })
     } catch (err) {
+      leaveCall()
+      setCallError('Could not answer the call. Check camera and microphone permissions.')
       console.error(err)
     }
   }
@@ -426,10 +447,9 @@ function App() {
     setCaller(null)
     setCallPartner(null)
     setRemoteStream(null)
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop())
-      setStream(null)
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop())
+    streamRef.current = null
+    setStream(null)
   }
 
   const sendMessage = (event) => {
@@ -507,7 +527,7 @@ function App() {
 
           <div
             className={`user-item menu-cta ${activeChat === 'global' ? 'active' : ''}`}
-            onClick={() => setActiveChat('global')}
+            onClick={() => selectChat('global')}
           >
             <span className="item-icon global-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -544,7 +564,7 @@ function App() {
             <div 
               key={room} 
               className={`user-item room-item ${activeChat === `room_${room}` ? 'active' : ''}`}
-              onClick={() => setActiveChat(`room_${room}`)}
+              onClick={() => selectChat(`room_${room}`)}
             >
               <span className="item-icon room-icon" aria-hidden="true">#</span>
               <span className="item-label">{room}</span>
@@ -560,7 +580,7 @@ function App() {
             <div 
               key={u.id} 
               className={`user-item ${activeChat === u.id ? 'active' : ''} ${u.id === socket.id ? 'disabled' : ''}`}
-              onClick={() => { if (u.id !== socket.id) setActiveChat(u.id) }}
+              onClick={() => { if (u.id !== socket.id) selectChat(u.id) }}
             >
               <span className="avatar-pill" aria-hidden="true">{u.name.slice(0, 1).toUpperCase()}</span>
               <span className="item-label">{u.name}</span>
@@ -589,6 +609,7 @@ function App() {
               <button 
                 className="action-btn call-btn" 
                 onClick={() => callUser(activeChat)}
+                disabled={Boolean(callPartner)}
                 title="Start Video Call"
               >
                 <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
@@ -600,11 +621,12 @@ function App() {
           )}
         </header>
 
+        {callError && <p role="alert">{callError}</p>}
         <div className="messages-area">
           <div className="messages-scroll" ref={listRef}>
             {(messages[activeChat] || []).map((msg) => {
-              const isSystem = msg.user === 'system';
-              const isMine = msg.user === name && !isSystem;
+              const isSystem = msg.system === true;
+              const isMine = ownSocketIds.has(msg.from) && !isSystem;
 
               if (isSystem) {
                 return (

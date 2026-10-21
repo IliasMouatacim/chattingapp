@@ -74,3 +74,20 @@ Backend default URL: `http://localhost:4000`
 - The chat is realtime but in-memory only (no database/history persistence).
 - If your backend is sleeping on free Render tier, first message may be delayed while waking up.
 - WebRTC calls need a TURN server for many mobile/corporate/NAT-restricted networks; STUN-only can fail to exchange media.
+
+## Validation
+
+Requires Node.js 22.12+ or Node.js 24 LTS. After installing both packages, run:
+
+```bash
+cd frontend
+npm run lint
+npm test
+npm run build
+```
+
+The regression suite starts an isolated backend on an automatically assigned port
+and checks health, presence, sender identity, global/direct/room messages, room
+membership enforcement, directed-target isolation, and call signaling. It closes
+the server and clients after completion. Browser media tests still require camera
+and microphone access (or simulated devices); cross-network calls may need TURN.
