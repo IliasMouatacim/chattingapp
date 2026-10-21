@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: chattingapp-backend
+    name: chattingapp
     runtime: node
     plan: free
-    region: frankfurt
+    region: oregon
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm start
